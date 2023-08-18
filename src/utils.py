@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import List, Union
+
 import numpy as np
+from loguru import logger
 
 
 def path_check(file_path: Union[str, Path]) -> None:
@@ -17,6 +19,9 @@ def path_check(file_path: Union[str, Path]) -> None:
     if not path.exists():
         # Create the directory, including parent directories if necessary
         path.mkdir(parents=True, exist_ok=True)
+        
+        # Log the creation of the directory
+        logger.info(f"Created directory: {path}")
 
 
 def solution_track(
@@ -53,6 +58,8 @@ def solution_track(
         for line in content:
             track_log.write(f'{line}\n')
         track_log.write('------------------------------------------------------\n')
+    
+    logger.info(f"Track solutions: Appended solution to {file_path}")
 
 
 def prepare_welspecs_content(
@@ -294,6 +301,8 @@ def write_solution(
         copy (bool): This keyword is just for the best solution (default: False).
         track (bool): Whether to track the solution (default: False).
     """
+    logger.info(f"Writing solution for '{keyword}' keyword.")
+    
     FILENAME_EXTENSION = '.inc'
     INCLUDE_PATH = 'INCLUDE'
     BEST_SOLUTION_PATH = 'Log_Files/best_solution_files'
@@ -320,8 +329,128 @@ def write_solution(
     elif keyword == 'WCONINJE':
         content = prepare_wconinje_content(solution, n_inj_well, track=track)
 
+    logger.debug(f"Writing content to file: {file_path}")
     write_to_file(file_path, content)
+    
     if track:
         track_file_name = f'track_{file_name}.txt'
         solution_track(content, filename=track_file_name)
 
+
+def batch_summary() -> None:
+    """
+    Summarize the occurrences of specific keywords in a batch log file in whole optimization process.
+    keywords: Errors, Problems, Warnings.
+
+    Returns:
+        None
+    """
+    # Create a directory to store the summary file
+    log_dir = 'Log_Files'
+    path_check(log_dir)
+    
+    # Keywords to loop over
+    keywords = ['Errors', 'Problems', 'Warnings']
+    
+    # Loop over the keywords and modes
+    for keyword in keywords:
+        mode = 'w+' if keyword == 'Errors' else 'a'
+        
+        call_counter = 0
+        total_keyword = 0
+        
+        # Open the batch log file and count the occurrences of the keyword
+        with open(f'{log_dir}/bat_results.txt', 'r') as bf_log, open(f'{log_dir}/bat_summary.txt', mode) as summary:
+            for line in bf_log:
+                if keyword in line:
+                    call_counter += 1
+                    
+                    # Split the line into a list of strings
+                    error_list = line.split()
+                    
+                    # How many times the keyword was found in the current simulation
+                    error_count = int(error_list[1])
+                    
+                    if error_count != 0:
+                        total_keyword += error_count
+                        summary.write(
+                            f'>> During "{call_counter}" Call ---> "{error_count}" {keyword} found.\n')
+            
+            summary.write(f'>>> Total {keyword}: {total_keyword}\n')
+            if mode != 'a':
+                summary.write(f'>>> >>> Objective function (or batch file) was called {call_counter} times in total.\n')
+            summary.write('---------------------------------------------------------------------------\n')
+
+
+def info_classify(key: str) -> None:
+    """
+    Classify and summarize simulation info lines based on a keyword.
+
+    Args:
+        key (str): The keyword used to identify the info type.
+    """
+    # Convert the keyword to uppercase
+    key = key.upper()
+    key_lines = []
+    
+    # Open the info file and extract the lines containing the keyword
+    with open(f'Log_Files/Simulation_info/{key}_info.txt', 'r') as sim_info_file:
+        for line in sim_info_file:
+            if ' @--' in line:
+                line = sim_info_file.readline()
+                key_lines.append(line)
+    
+    key_line_set = list(set(key_lines))
+    items = []
+    occ_list = []
+    
+    for key_line in key_line_set:
+        items.append(key_line)
+        occ_list.append(key_lines.count(key_line))
+    
+    with open('Log_Files/Simulation_info/info_type_class.txt', 'a') as info_type_class:
+        for i, item in enumerate(items):
+            info_type_class.write(f'> {key}: {item}')
+            info_type_class.write(f'>> occurrence: {occ_list[i]}\n')
+            info_type_class.write('-------------------------------------\n')
+
+
+def get_simulation_info(key_list: List[str] = None) -> None:
+    """
+    Extract and categorize simulation info based on a list of keywords.
+
+    Args:
+        key_list (List[str], optional): A list of keywords to extract info for. Default is ['PROBLEM', 'WARNING', 'ERROR'].
+    """
+    if key_list is None:
+        key_list = ['PROBLEM', 'WARNING', 'ERROR']
+    
+    info_dir = 'Log_Files/Simulation_info'
+    path_check(info_dir)
+    
+    for key in key_list:
+        counter = 0
+        key_problem = 0
+        
+        with open('Log_Files/bat_results.txt', 'r') as bat_file:
+            for line in bat_file:
+                if '(base)' in line:
+                    counter += 1
+                if f'@--{key}' in line:
+                    key_problem += 1
+                    with open(f'{info_dir}/{key}_info.txt', 'a') as k_info_file:
+                        k_info_file.write(f'---------------------------------------------------------------\n')
+                        k_info_file.write(f'Call {counter}\n')
+                        k_info_file.write(f'---------------------------------------------------------------\n')
+                    state = True
+                    while state:
+                        with open(f'{info_dir}/{key}_info.txt', 'a') as k_info_file:
+                            k_info_file.write(f'{line}')
+                        line = bat_file.readline()
+                        if '@' not in line:
+                            state = False
+            else:
+                if key_problem == 0:
+                    with open(f'{info_dir}/{key}_info.txt', 'a') as k_info_file:
+                        k_info_file.write(f"There's no {key} in the batch summary file.\n")
+        info_classify(key)

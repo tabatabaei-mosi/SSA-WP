@@ -454,3 +454,31 @@ def get_simulation_info(key_list: List[str] = None) -> None:
                     with open(f'{info_dir}/{key}_info.txt', 'a') as k_info_file:
                         k_info_file.write(f"There's no {key} in the batch summary file.\n")
         info_classify(key)
+
+
+def final_idx_check(
+    idx: int, 
+    len_obj_map: int
+) -> int:
+    """
+    Check if the index chosen by the optimizer is within the bounds of the RQI map list.
+    If not, adjust it to be within the valid range. This is necessary due to potential
+    out-of-range issues caused by discrete adjustments in the solution.
+
+    Args:
+        idx (int): The index proposed by the optimizer.
+        len_obj_map (int): The length of the RQI map list.
+
+    Returns:
+        int: An acceptable index within the range of the RQI map list length.
+    """
+    lb, ub = 0, len_obj_map - 1
+
+    # Check if the index is outside the valid range and adjust it
+    if idx not in range(lb, ub + 1):
+        if idx >= ub:
+            return ub
+        if idx <= lb:
+            return lb
+    else:
+        return idx

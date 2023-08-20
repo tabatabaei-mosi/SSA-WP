@@ -4,6 +4,10 @@ from typing import List, Union
 import numpy as np
 from loguru import logger
 
+from optimizer import SSA_WP
+
+import subprocess
+
 
 def path_check(file_path: Union[str, Path]) -> None:
     """
@@ -271,7 +275,7 @@ def write_to_file(
         with open(file_path, 'w+') as file:
             file.write('\n'.join(content) + '\n/')
     except IOError as e:
-        print(f"An error occurred while writing to the file: {e}")
+        logger.error(f"An error occurred while writing to the file: {e}")
 
 
 def write_solution(
@@ -482,3 +486,258 @@ def final_idx_check(
             return lb
     else:
         return idx
+
+
+def ssa_log(
+    filename: str, 
+    solution: List, 
+    npv_unit: str = 'M'
+):
+    """
+    Log the best solution of optimizer with its hyper-parameters to a file.
+
+    Args:
+        filename (str): Name of the log file which is opened by mealpy.
+        solution (list): Solution containing optimization details.
+        npv_unit (str, optional): NPV unit. Defaults to 'M'.
+    """
+    # Save the results in Log_Files directory
+    path = f'Log_Files'
+    # Check if the path exists
+    path_check(path)
+    
+    file_path = f'{path}/{filename}'
+
+    # Extract the solution details 
+    time = solution[0]              # Total Runtime
+    best_solution = solution[1]     # Best Global Solution
+    best_npv = solution[2]          # NPV of the best solution
+    # Extract the SSA hyper parameters
+    PD, SD, ST, epoch, pop_size = solution[3], solution[4], solution[5], solution[6], solution[7]
+
+    # Append the information to the end of log file
+    with open(file_path, 'a') as log_file:
+            log_file.write(f'> Best solution: {best_solution}\n> Best NPV: ${best_npv} {npv_unit}\n')
+            log_file.write(f'> PD: {PD};  SD: {SD};  ST:{ST};  Pop_size: {pop_size};  Epoch: {epoch}\n')
+            log_file.write(
+                f'> Runtime:{str(round(time, 2))} sec. ---> {str(round(time / 60, 2))} min ----> {str(round(time / 60 / 60, 2))} h\n')
+            log_file.write(
+                '-----------------------------------------------------------------------------------------------------------\n')
+
+    logger.info(f'{filename} is ready!')
+
+
+def final_result(
+    solution: List, 
+    capex_value: float, 
+    npv_unit: str = 'M', 
+    n_pro_well: int = 30, n_optimum_well: int = 36,
+    well_space: int = 2,
+    key_dic: dict = None, 
+    best_rqi_locs = None,
+    dims = (85, 185, 31),
+    spaces: List = None, border: List = None, null: List = None
+):
+    """
+    Log the final optimization result to a file.
+
+    Args:
+        solution (list): Solution containing optimization details.
+        capex_value (float): Capex value.
+        n_pro_well (int): Number of production wells.
+        n_optimum_well (int, optional): Number of optimum wells. Defaults to 5.
+        npv_unit (str, optional): NPV unit. Defaults to 'M'.
+        spaces (list, optional): List of well spaces. Defaults to None.
+        border (list, optional): List of wells on borders. Defaults to None.
+        null (list, optional): List of wells near null blocks. Defaults to None.
+    """
+    path = f'Log_Files'
+    path_check(path)  # You need to implement path_check function
+    path_file = f'{path}/Best_Result.txt'
+    time = solution[0]
+    best_solution = solution[1]
+    best_npv = solution[2]
+    PD, SD, ST, epoch, pop_size = solution[3], solution[4], solution[5], solution[6], solution[7]
+
+    wp_obj = SSA_WP(
+        prod_well=n_pro_well, inj_well=n_optimum_well - n_pro_well, 
+        well_space=well_space,
+        dims=dims,
+        best_rqi_locs=best_rqi_locs,
+        keys=key_dic,
+        capex=capex_value,
+    )
+    
+    # Calculate well locations and perform other necessary tasks using imported functions
+    locs_id, prod_rate, inj_rate = wp_obj.split_solution(best_solution)
+    well_locs = wp_obj.map_backward(locs_id)
+    locs, perfs = wp_obj.decode_locs(well_locs)
+    
+    # write the decoded solution (locations) of optimizer 
+    write_solution(
+        locs, 
+        keyword=key_dic['loc_key'], 
+        n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well
+    )
+    
+    # write the decoded solution (perforations) of optimizer 
+    write_solution(
+        locs, 
+        keyword=key_dic['perf_key'], 
+        n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well
+    )
+    
+    # write the decoded solution (production rates) of optimizer 
+    write_solution(
+        locs, 
+        keyword=key_dic['pro_rate_key'], 
+        n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well
+    )
+
+    # write the decoded solution (inj rates) of optimizer 
+    write_solution(
+        locs, 
+        keyword=key_dic['inj_rate_key'], 
+        n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well
+    )
+
+    # Write the final solution to a file
+    j = 0
+    rp = 0
+    with open(path_file, 'w+') as final_text:
+        final_text.write('>>> The final solution is according to below:\n')
+        for i in range(0, n_optimum_well):
+            # well locations (i, j)
+            loc_i = locs[j]
+            loc_j = locs[j + 1]
+            
+            # well perforation start and end
+            perf_i = perfs[j]
+            perf_j = perfs[j + 1]
+            
+            # separation between production and injection rates
+            if rp in range(n_pro_well):
+                q = str(prod_rate[rp])
+                rp += 1
+                ri = rp - n_pro_well
+            else:
+                q = str(inj_rate[ri])
+                ri += 1
+            
+            # Write the well details to the file
+            final_text.write(
+                f'> well {i + 1} ---> i = {loc_i}, j = {loc_j}, perf_s = {perf_i}, perf_e = {perf_j}, Q = {q} STB\n')
+            j += 2
+
+        # Write the best solution and its NPV to the file (final details)
+        final_text.write('----------------------------------------------------------------- \n')
+        final_text.write('>>> The Best NPV obtained by this solution is:\n')
+        final_text.write(f'$ {str(best_npv)} {npv_unit}  by capex value of {capex_value}\n')
+        final_text.write('----------------------------------------------------------------- \n')
+        final_text.write('>>> The SSA parameters:\n')
+        final_text.write(f'> PD: {PD};  SD: {SD};  ST:{ST};  Pop_size: {pop_size};  Epoch: {epoch}\n')
+        final_text.write(f'> Runtime: {str(round(time, 2))} sec. --> {str(round(time / 60, 2))} min --> {str(round(time / 60 / 60, 2))} h\n')
+        final_text.write('\n ----------------------------------------------------------- \n')
+
+        # Log spaces, borders, and null blocks if available
+        if spaces is not None:
+            for well in spaces:
+                final_text.write(f'{well}\n')
+        final_text.write('\n ----------------------------------------------------------- \n')
+        
+        if border is not None:
+            for well in border:
+                final_text.write(f'{well}\n')
+        final_text.write('\n ----------------------------------------------------------- \n')
+        
+        if null is not None:
+            for well in null:
+                final_text.write(f'{well}\n')
+        final_text.write('\n ----------------------------------------------------------- \n')
+
+    # Run the simulation using the best solution
+    with open(path_file, 'a') as bf_result:
+        subprocess.call([r"$MatEcl.bat"], stdout=bf_result)
+        bf_result.write('\n -----------------------------------------------------------\n')
+        
+    
+    # Copy the best solution files to a specific directory 
+    write_solution(
+        locs, 
+        keyword=key_dic['loc_key'], 
+        n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well,
+        copy=True
+    )
+    
+    # Copy the best solution files to a specific directory 
+    write_solution(
+        locs, 
+        keyword=key_dic['perf_key'], 
+        n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well,
+        copy=True
+    )
+    
+    # Copy the best solution files to a specific directory 
+    write_solution(
+        locs, 
+        keyword=key_dic['pro_rate_key'], 
+        n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well,
+        copy=True
+    )
+
+    # Copy the best solution files to a specific directory
+    write_solution(
+        locs, 
+        keyword=key_dic['inj_rate_key'], 
+        n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well,
+        copy=True
+    )
+
+
+def write_gbf(main_path: str, gb_fitness: List[float]):
+    """
+    Write global best fitness values to a file.
+
+    Args:
+        main_path (str): Main path where the file should be created.
+        gb_fitness (list of float): List of global best fitness values.
+    """
+    path = f'{main_path}/Global_best_Fitness'
+    path_check(path) 
+
+    with open(f'{path}/gbf.txt', 'w') as gbf_file:
+        epoch = 1
+        for item in gb_fitness:
+            gbf_file.write(f'> Epoch {epoch}: GBF = {item}\n')
+            epoch += 1
+
+
+def read_best_rqi(file_name='RQI', mode='all'):
+    """
+    Read data from files containing best RQI values, locations, and null blocks.
+
+    Args:
+        file_name (str, optional): The directory containing the files. Default is 'RQI'.
+        mode (str, optional): The mode for reading data ('all' or 'partial'). Default is 'all'.
+
+    Returns:
+        tuple: A tuple containing best RQI values, best RQI locations, and null block locations.
+               The returned values depend on the mode parameter.
+    """
+    
+    # Read best RQI values from file
+    with open(f'{file_name}/best_RQI.text', 'r') as file:
+        best_rqi = [float(i) for i in file]
+
+    # Read best RQI locations from file
+    with open(f'{file_name}/best_RQI_locs.text', 'r') as rqi_loc:
+        best_rqi_locs = [tuple(map(int, i.split(','))) for i in rqi_loc]
+
+    # Read null block locations from file
+    with open(f'{file_name}/Null_blocks.text', 'r') as null_file:
+        null_locs = [tuple(map(int, i.split(','))) for i in null_file]
+
+    # Return different values based on the mode parameter
+    if mode == 'all':
+        return best_rqi, best_rqi_locs, null_locs
+

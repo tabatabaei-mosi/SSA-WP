@@ -1,6 +1,9 @@
-from typing import List, Union, Tuple
-from optimizer import split_solution, map_backward, decode_locs 
+from typing import List, Tuple, Union
+
 import numpy as np
+
+from optimizer import decode_locs, map_backward, split_solution
+
 
 def logical_constrains(
     solution: List[Union[float, int]],

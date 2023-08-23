@@ -1,9 +1,12 @@
-import numpy as np
-import pandas as pd
 import subprocess
 from typing import List, Tuple
-from utils import final_idx_check, write_solution
+
+import numpy as np
+import pandas as pd
+
 from constrains import logical_constrains
+from utils import final_idx_check, write_solution
+
 
 class SSA_WP:
     def __init__(

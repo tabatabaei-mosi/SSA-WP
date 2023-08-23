@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 from typing import List, Union
 
@@ -5,8 +6,6 @@ import numpy as np
 from loguru import logger
 
 from optimizer import SSA_WP
-
-import subprocess
 
 
 def path_check(file_path: Union[str, Path]) -> None:

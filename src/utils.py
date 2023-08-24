@@ -6,6 +6,7 @@ import numpy as np
 from loguru import logger
 
 from optimizer import SSA_WP
+from Preprocessor.quality_map import main as clean_map
 
 
 def path_check(file_path: Union[str, Path]) -> None:
@@ -711,19 +712,44 @@ def write_gbf(main_path: str, gb_fitness: List[float]):
             epoch += 1
 
 
-def read_best_rqi(file_name='RQI', mode='all'):
+def read_best_rqi(
+    file_name='RQI',
+    threshold=0,
+    null_space=2,
+    prop_key=None,
+    grid_path=None,
+    dim=(85, 185, 31),
+    mode='all'
+):
     """
     Read data from files containing best RQI values, locations, and null blocks.
 
     Args:
         file_name (str, optional): The directory containing the files. Default is 'RQI'.
+        threshold (float, optional): The threshold value. Default is 0.
+        null_space (int, optional): The minimum distance to null blocks. Default is 2.
+        prop_key (list, optional): List of property keywords. Default is None.
+        grid_path (str, optional): Path to the grid file. Default is None.
+        dim (tuple, optional): Grid dimensions. Default is (85, 185, 31).
         mode (str, optional): The mode for reading data ('all' or 'partial'). Default is 'all'.
 
     Returns:
         tuple: A tuple containing best RQI values, best RQI locations, and null block locations.
                The returned values depend on the mode parameter.
     """
+    # RQI directory path
+    rq_dir = Path(file_name)
     
+    # Create clean map in the RQI directory if it's empty or not exist
+    if not rq_dir.exists() or not any(rq_dir.iterdir()):
+        clean_map(
+            rqi_limit=threshold,
+            grid_path=grid_path,
+            null_space=null_space,
+            prop_key=prop_key,
+            dim=dim
+        )
+        
     # Read best RQI values from file
     with open(f'{file_name}/best_RQI.text', 'r') as file:
         best_rqi = [float(i) for i in file]

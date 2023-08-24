@@ -1,3 +1,4 @@
+from pathlib import Path
 from time import time
 from typing import List, Tuple, Union
 
@@ -423,7 +424,13 @@ def main(
 
     # Inputs
     rqi_limit = 0
-    rqi_path = f'RQI/TH={rqi_limit}'  # RQI files will be saved here.
+    
+    abs_path = Path(__file__).resolve().parent.parent
+    grid_path = f'{abs_path}/{grid_path}'
+    
+    rqi_path = f'{abs_path}/RQI/TH={rqi_limit}'  # RQI files will be saved here.
+    
+    # RQI map considering interval check will save here
     interval_path = f'{rqi_path}/interval_checked'
     path_check(interval_path)  # if path doesn't exist, create it.
 

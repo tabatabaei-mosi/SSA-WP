@@ -1,6 +1,7 @@
+import shutil
 import subprocess
 from pathlib import Path
-from typing import List, Union
+from typing import Dict, List, Union
 
 import numpy as np
 from loguru import logger
@@ -23,7 +24,7 @@ def path_check(file_path: Union[str, Path]) -> None:
     if not path.exists():
         # Create the directory, including parent directories if necessary
         path.mkdir(parents=True, exist_ok=True)
-        
+
         # Log the creation of the directory
         logger.info(f"Created directory: {path}")
 
@@ -49,30 +50,31 @@ def solution_track(
     """
     # Define the directory path to store tracking files
     path = 'Log_Files/Track_solutions'
-    
+
     # Ensure the directory exists or create it
     path_check(path)
-    
+
     # Create the full file path
     file_path = f'{path}/{filename}'
-    
+
     # Append the solution content to the tracking file
     with open(file_path, 'a') as track_log:
         track_log.write('Obj function Called \n')
         for line in content:
             track_log.write(f'{line}\n')
-        track_log.write('------------------------------------------------------\n')
-    
+        track_log.write(
+            '------------------------------------------------------\n')
+
     logger.info(f"Track solutions: Appended solution to {file_path}")
 
 
 def prepare_welspecs_content(
-    solution: Union[List[Union[float, int]], np.ndarray], 
+    solution: Union[List[Union[float, int]], np.ndarray],
     n_prod_well: int, n_inj_well: int
-)-> List[str]:
+) -> List[str]:
     """
     Prepare content for the WELSPECS section of `.DATA` file based on the given solution.  
-    
+
     Args:
         solution (list or array): The optimizer's decoded solution.
         n_prod_well (int): Number of production wells being optimized.
@@ -80,20 +82,20 @@ def prepare_welspecs_content(
 
     Returns:
         list: Content lines for the WELSPECS section.
-        
+
     The template considered for well location is as follows:
 
     Production wells: [' ', well_name, 'PRD', loc_i, loc_j, '1*', 'OIL/']
-    
+
     Injection wells: [' ', well_name, 'INJ', loc_inj_i, loc_inj_j, '1*', 'WATER/']
-    
+
     ~ Example of solution:
-    
+
     solution: [1, 10, ..., 2, 8, ...] which is interpreted as: i_p=1, j_p=10, i_i=2, j_i=8.
     """
     content = []
     j = 0
-    
+
     for w_p in range(1, n_prod_well + 1):
         # well name
         pw_name = f'P{w_p}'
@@ -106,7 +108,7 @@ def prepare_welspecs_content(
         temp_list = '   '.join(pw_content)
         content.append(temp_list)
         j += 2
-        
+
     for w_i in range(1, n_inj_well + 1):
         # well name
         iw_name = f'I{w_i}'
@@ -119,7 +121,7 @@ def prepare_welspecs_content(
         temp_list = '   '.join(iw_content)
         content.append(temp_list)
         j += 2
-    
+
     return content
 
 
@@ -141,16 +143,16 @@ def prepare_compdat_content(
     The template considered for well perforation is as follows:
 
     Production wells: ['', pro_name, '2*', pw_perf_s, pw_perf_e, 'OPEN', '2*', '0.5/']
-    
+
     Injection wells: ['', inj_name, '2*', wi_perf_s, wi_perf_e, 'OPEN', '2*', '0.5/']
-    
+
     ~ Example of solution:
-    
+
     solution: [1, 10, ..., 2, 8, ...] which is interpreted as: pw_perf_s=1, pw_perf_e=10, wi_perf_s=2, wi_perf_e=8.
     """
     content = []
     p = 0
-    
+
     for w_p in range(1, n_prod_well + 1):
         # well name
         pw_name = f'P{w_p}'
@@ -159,7 +161,8 @@ def prepare_compdat_content(
         pw_perf_e = str(int(solution[p + 1]))
 
         # Create production well perforation content
-        pw_content = ['', pw_name, '2*', pw_perf_s, pw_perf_e, 'OPEN', '2*', '0.5/']
+        pw_content = ['', pw_name, '2*', pw_perf_s,
+                      pw_perf_e, 'OPEN', '2*', '0.5/']
         temp_list = '   '.join(pw_content)
         content.append(temp_list)
         p += 2
@@ -172,7 +175,8 @@ def prepare_compdat_content(
         wi_perf_e = str(int(solution[p + 1]))
 
         # Create injection well perforation content
-        iw_content = ['', iw_name, '2*', wi_perf_s, wi_perf_e, 'OPEN', '2*', '0.5/']
+        iw_content = ['', iw_name, '2*', wi_perf_s,
+                      wi_perf_e, 'OPEN', '2*', '0.5/']
         temp_list = '   '.join(iw_content)
         content.append(temp_list)
         p += 2
@@ -197,9 +201,9 @@ def prepare_wconprod_content(
     The template considered for production well rates is as follows:
 
     Production wells: ['', well_name, 'OPEN', 'ORAT', prod_rate, '4*', '2000/']
-    
+
     ~ Example of solution:
-    
+
     solution: [100, 200] which is interpreted as: prod_rate_w1=100, prod_rate_w2=200.
     """
     content = []
@@ -218,6 +222,7 @@ def prepare_wconprod_content(
 
     return content
 
+
 def prepare_wconinje_content(
     solution: Union[List[Union[float, int]], np.ndarray],
     n_inj_well: int
@@ -235,9 +240,9 @@ def prepare_wconinje_content(
     The template considered for injection well rates is as follows:
 
     Injection wells: ['', well_name, 'WAT', 'OPEN', 'RATE', inj_rate, '1*', '15000/']
-    
+
     ~ Example of solution:
-    
+
     solution: [500, 800] which is interpreted as: inj_rate_w1=500, inj_rate_w2=800.
     """
     content = []
@@ -249,7 +254,8 @@ def prepare_wconinje_content(
         inj_rate = str(solution[inj_idx])
 
         # Create injection well rate content
-        ir_content = ['', well_name, 'WAT', 'OPEN', 'RATE', inj_rate, '1*', '15000/']
+        ir_content = ['', well_name, 'WAT', 'OPEN',
+                      'RATE', inj_rate, '1*', '15000/']
         temp_list = '   '.join(ir_content)
         content.append(temp_list)
         inj_idx += 1
@@ -258,7 +264,7 @@ def prepare_wconinje_content(
 
 
 def write_to_file(
-    file_path: str, 
+    file_path: str,
     content: List[str]
 ) -> None:
     """
@@ -306,7 +312,7 @@ def write_solution(
         track (bool): Whether to track the solution (default: False).
     """
     logger.info(f"Writing solution for '{keyword}' keyword.")
-    
+
     FILENAME_EXTENSION = '.inc'
     INCLUDE_PATH = 'INCLUDE'
     BEST_SOLUTION_PATH = 'Log_Files/best_solution_files'
@@ -335,7 +341,7 @@ def write_solution(
 
     logger.debug(f"Writing content to file: {file_path}")
     write_to_file(file_path, content)
-    
+
     if track:
         track_file_name = f'track_{file_name}.txt'
         solution_track(content, filename=track_file_name)
@@ -352,38 +358,40 @@ def batch_summary() -> None:
     # Create a directory to store the summary file
     log_dir = 'Log_Files'
     path_check(log_dir)
-    
+
     # Keywords to loop over
     keywords = ['Errors', 'Problems', 'Warnings']
-    
+
     # Loop over the keywords and modes
     for keyword in keywords:
         mode = 'w+' if keyword == 'Errors' else 'a'
-        
+
         call_counter = 0
         total_keyword = 0
-        
+
         # Open the batch log file and count the occurrences of the keyword
         with open(f'{log_dir}/bat_results.txt', 'r') as bf_log, open(f'{log_dir}/bat_summary.txt', mode) as summary:
             for line in bf_log:
                 if keyword in line:
                     call_counter += 1
-                    
+
                     # Split the line into a list of strings
                     error_list = line.split()
-                    
+
                     # How many times the keyword was found in the current simulation
                     error_count = int(error_list[1])
-                    
+
                     if error_count != 0:
                         total_keyword += error_count
                         summary.write(
                             f'>> During "{call_counter}" Call ---> "{error_count}" {keyword} found.\n')
-            
+
             summary.write(f'>>> Total {keyword}: {total_keyword}\n')
             if mode != 'a':
-                summary.write(f'>>> >>> Objective function (or batch file) was called {call_counter} times in total.\n')
-            summary.write('---------------------------------------------------------------------------\n')
+                summary.write(
+                    f'>>> >>> Objective function (or batch file) was called {call_counter} times in total.\n')
+            summary.write(
+                '---------------------------------------------------------------------------\n')
 
 
 def info_classify(key: str) -> None:
@@ -396,22 +404,22 @@ def info_classify(key: str) -> None:
     # Convert the keyword to uppercase
     key = key.upper()
     key_lines = []
-    
+
     # Open the info file and extract the lines containing the keyword
     with open(f'Log_Files/Simulation_info/{key}_info.txt', 'r') as sim_info_file:
         for line in sim_info_file:
             if ' @--' in line:
                 line = sim_info_file.readline()
                 key_lines.append(line)
-    
+
     key_line_set = list(set(key_lines))
     items = []
     occ_list = []
-    
+
     for key_line in key_line_set:
         items.append(key_line)
         occ_list.append(key_lines.count(key_line))
-    
+
     with open('Log_Files/Simulation_info/info_type_class.txt', 'a') as info_type_class:
         for i, item in enumerate(items):
             info_type_class.write(f'> {key}: {item}')
@@ -428,14 +436,14 @@ def get_simulation_info(key_list: List[str] = None) -> None:
     """
     if key_list is None:
         key_list = ['PROBLEM', 'WARNING', 'ERROR']
-    
+
     info_dir = 'Log_Files/Simulation_info'
     path_check(info_dir)
-    
+
     for key in key_list:
         counter = 0
         key_problem = 0
-        
+
         with open('Log_Files/bat_results.txt', 'r') as bat_file:
             for line in bat_file:
                 if '(base)' in line:
@@ -443,9 +451,11 @@ def get_simulation_info(key_list: List[str] = None) -> None:
                 if f'@--{key}' in line:
                     key_problem += 1
                     with open(f'{info_dir}/{key}_info.txt', 'a') as k_info_file:
-                        k_info_file.write(f'---------------------------------------------------------------\n')
+                        k_info_file.write(
+                            f'---------------------------------------------------------------\n')
                         k_info_file.write(f'Call {counter}\n')
-                        k_info_file.write(f'---------------------------------------------------------------\n')
+                        k_info_file.write(
+                            f'---------------------------------------------------------------\n')
                     state = True
                     while state:
                         with open(f'{info_dir}/{key}_info.txt', 'a') as k_info_file:
@@ -456,12 +466,13 @@ def get_simulation_info(key_list: List[str] = None) -> None:
             else:
                 if key_problem == 0:
                     with open(f'{info_dir}/{key}_info.txt', 'a') as k_info_file:
-                        k_info_file.write(f"There's no {key} in the batch summary file.\n")
+                        k_info_file.write(
+                            f"There's no {key} in the batch summary file.\n")
         info_classify(key)
 
 
 def final_idx_check(
-    idx: int, 
+    idx: int,
     len_obj_map: int
 ) -> int:
     """
@@ -489,8 +500,8 @@ def final_idx_check(
 
 
 def ssa_log(
-    filename: str, 
-    solution: List, 
+    filename: str,
+    solution: List,
     npv_unit: str = 'M'
 ):
     """
@@ -505,10 +516,10 @@ def ssa_log(
     path = f'Log_Files'
     # Check if the path exists
     path_check(path)
-    
+
     file_path = f'{path}/{filename}'
 
-    # Extract the solution details 
+    # Extract the solution details
     time = solution[0]              # Total Runtime
     best_solution = solution[1]     # Best Global Solution
     best_npv = solution[2]          # NPV of the best solution
@@ -517,87 +528,88 @@ def ssa_log(
 
     # Append the information to the end of log file
     with open(file_path, 'a') as log_file:
-            log_file.write(f'> Best solution: {best_solution}\n> Best NPV: ${best_npv} {npv_unit}\n')
-            log_file.write(f'> PD: {PD};  SD: {SD};  ST:{ST};  Pop_size: {pop_size};  Epoch: {epoch}\n')
-            log_file.write(
-                f'> Runtime:{str(round(time, 2))} sec. ---> {str(round(time / 60, 2))} min ----> {str(round(time / 60 / 60, 2))} h\n')
-            log_file.write(
-                '-----------------------------------------------------------------------------------------------------------\n')
+        log_file.write(
+            f'> Best solution: {best_solution}\n> Best NPV: ${best_npv} {npv_unit}\n')
+        log_file.write(
+            f'> PD: {PD};  SD: {SD};  ST:{ST};  Pop_size: {pop_size};  Epoch: {epoch}\n')
+        log_file.write(
+            f'> Runtime:{str(round(time, 2))} sec. ---> {str(round(time / 60, 2))} min ----> {str(round(time / 60 / 60, 2))} h\n')
+        log_file.write(
+            '-----------------------------------------------------------------------------------------------------------\n')
 
     logger.info(f'{filename} is ready!')
 
 
 def final_result(
-    solution: List, 
-    capex_value: float, 
-    npv_unit: str = 'M', 
+    Optimizer_info: List,
+    capex_value: float,
+    npv_unit: str = 'M',
     n_pro_well: int = 30, n_optimum_well: int = 36,
     well_space: int = 2,
-    key_dic: dict = None, 
-    best_rqi_locs = None,
-    dims = (85, 185, 31),
+    key_dic: dict = None,
+    best_rqi_locs=None,
+    dims=(85, 185, 31),
     spaces: List = None, border: List = None, null: List = None
 ):
     """
     Log the final optimization result to a file.
 
     Args:
-        solution (list): Solution containing optimization details.
+        Optimizer_info (list): Info about optimizer run (i.e., hyper-parameters, runtime, etc.)
         capex_value (float): Capex value.
         n_pro_well (int): Number of production wells.
         n_optimum_well (int, optional): Number of optimum wells. Defaults to 5.
         npv_unit (str, optional): NPV unit. Defaults to 'M'.
-        spaces (list, optional): List of well spaces. Defaults to None.
-        border (list, optional): List of wells on borders. Defaults to None.
-        null (list, optional): List of wells near null blocks. Defaults to None.
+        spaces (int, optional): min well space
     """
     path = f'Log_Files'
     path_check(path)  # You need to implement path_check function
     path_file = f'{path}/Best_Result.txt'
-    time = solution[0]
-    best_solution = solution[1]
-    best_npv = solution[2]
-    PD, SD, ST, epoch, pop_size = solution[3], solution[4], solution[5], solution[6], solution[7]
+    time = Optimizer_info[0]
+    best_solution = Optimizer_info[1]
+    best_npv = Optimizer_info[2]
+    PD, SD, ST, epoch, pop_size = Optimizer_info[3], Optimizer_info[
+        4], Optimizer_info[5], solution[6], solution[7]
 
     wp_obj = SSA_WP(
-        prod_well=n_pro_well, inj_well=n_optimum_well - n_pro_well, 
+        prod_well=n_pro_well, inj_well=n_optimum_well - n_pro_well,
         well_space=well_space,
         dims=dims,
         best_rqi_locs=best_rqi_locs,
         keys=key_dic,
         capex=capex_value,
     )
-    
+
     # Calculate well locations and perform other necessary tasks using imported functions
     locs_id, prod_rate, inj_rate = wp_obj.split_solution(best_solution)
     well_locs = wp_obj.map_backward(locs_id)
     locs, perfs = wp_obj.decode_locs(well_locs)
-    
-    # write the decoded solution (locations) of optimizer 
+
+    # write the decoded solution (locations) of optimizer
     write_solution(
-        locs, 
-        keyword=key_dic['loc_key'], 
-        n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well
-    )
-    
-    # write the decoded solution (perforations) of optimizer 
-    write_solution(
-        locs, 
-        keyword=key_dic['perf_key'], 
-        n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well
-    )
-    
-    # write the decoded solution (production rates) of optimizer 
-    write_solution(
-        locs, 
-        keyword=key_dic['pro_rate_key'], 
+        locs,
+        keyword=key_dic['loc_key'],
         n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well
     )
 
-    # write the decoded solution (inj rates) of optimizer 
+    # write the decoded solution (perforations) of optimizer
     write_solution(
-        locs, 
-        keyword=key_dic['inj_rate_key'], 
+        locs,
+        keyword=key_dic['perf_key'],
+        n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well
+    )
+
+    # write the decoded solution (production rates) of optimizer
+    write_solution(
+        locs,
+        keyword=key_dic['pro_rate_key'],
+        n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well
+    )
+
+    # write the decoded solution (inj rates) of optimizer
+    write_solution(
+        locs,
+        keyword=key_dic['inj_rate_key'],
         n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well
     )
 
@@ -610,11 +622,11 @@ def final_result(
             # well locations (i, j)
             loc_i = locs[j]
             loc_j = locs[j + 1]
-            
+
             # well perforation start and end
             perf_i = perfs[j]
             perf_j = perfs[j + 1]
-            
+
             # separation between production and injection rates
             if rp in range(n_pro_well):
                 q = str(prod_rate[rp])
@@ -623,72 +635,81 @@ def final_result(
             else:
                 q = str(inj_rate[ri])
                 ri += 1
-            
+
             # Write the well details to the file
             final_text.write(
                 f'> well {i + 1} ---> i = {loc_i}, j = {loc_j}, perf_s = {perf_i}, perf_e = {perf_j}, Q = {q} STB\n')
             j += 2
 
         # Write the best solution and its NPV to the file (final details)
-        final_text.write('----------------------------------------------------------------- \n')
+        final_text.write(
+            '----------------------------------------------------------------- \n')
         final_text.write('>>> The Best NPV obtained by this solution is:\n')
-        final_text.write(f'$ {str(best_npv)} {npv_unit}  by capex value of {capex_value}\n')
-        final_text.write('----------------------------------------------------------------- \n')
+        final_text.write(
+            f'$ {str(best_npv)} {npv_unit}  by capex value of {capex_value}\n')
+        final_text.write(
+            '----------------------------------------------------------------- \n')
         final_text.write('>>> The SSA parameters:\n')
-        final_text.write(f'> PD: {PD};  SD: {SD};  ST:{ST};  Pop_size: {pop_size};  Epoch: {epoch}\n')
-        final_text.write(f'> Runtime: {str(round(time, 2))} sec. --> {str(round(time / 60, 2))} min --> {str(round(time / 60 / 60, 2))} h\n')
-        final_text.write('\n ----------------------------------------------------------- \n')
+        final_text.write(
+            f'> PD: {PD};  SD: {SD};  ST:{ST};  Pop_size: {pop_size};  Epoch: {epoch}\n')
+        final_text.write(
+            f'> Runtime: {str(round(time, 2))} sec. --> {str(round(time / 60, 2))} min --> {str(round(time / 60 / 60, 2))} h\n')
+        final_text.write(
+            '\n ----------------------------------------------------------- \n')
 
         # Log spaces, borders, and null blocks if available
         if spaces is not None:
             for well in spaces:
                 final_text.write(f'{well}\n')
-        final_text.write('\n ----------------------------------------------------------- \n')
-        
+        final_text.write(
+            '\n ----------------------------------------------------------- \n')
+
         if border is not None:
             for well in border:
                 final_text.write(f'{well}\n')
-        final_text.write('\n ----------------------------------------------------------- \n')
-        
+        final_text.write(
+            '\n ----------------------------------------------------------- \n')
+
         if null is not None:
             for well in null:
                 final_text.write(f'{well}\n')
-        final_text.write('\n ----------------------------------------------------------- \n')
+        final_text.write(
+            '\n ----------------------------------------------------------- \n')
 
     # Run the simulation using the best solution
     with open(path_file, 'a') as bf_result:
         subprocess.call([r"$MatEcl.bat"], stdout=bf_result)
-        bf_result.write('\n -----------------------------------------------------------\n')
-        
-    
-    # Copy the best solution files to a specific directory 
+        bf_result.write(
+            '\n -----------------------------------------------------------\n')
+
+    # Copy the best solution files to a specific directory
     write_solution(
-        locs, 
-        keyword=key_dic['loc_key'], 
-        n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well,
-        copy=True
-    )
-    
-    # Copy the best solution files to a specific directory 
-    write_solution(
-        locs, 
-        keyword=key_dic['perf_key'], 
-        n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well,
-        copy=True
-    )
-    
-    # Copy the best solution files to a specific directory 
-    write_solution(
-        locs, 
-        keyword=key_dic['pro_rate_key'], 
+        locs,
+        keyword=key_dic['loc_key'],
         n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well,
         copy=True
     )
 
     # Copy the best solution files to a specific directory
     write_solution(
-        locs, 
-        keyword=key_dic['inj_rate_key'], 
+        locs,
+        keyword=key_dic['perf_key'],
+        n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well,
+        copy=True
+    )
+
+    # Copy the best solution files to a specific directory
+    write_solution(
+        locs,
+        keyword=key_dic['pro_rate_key'],
+        n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well,
+        copy=True
+    )
+
+    # Copy the best solution files to a specific directory
+    write_solution(
+        locs,
+        keyword=key_dic['inj_rate_key'],
         n_prod_well=n_pro_well, n_inj_well=n_optimum_well - n_pro_well,
         copy=True
     )
@@ -703,7 +724,7 @@ def write_gbf(main_path: str, gb_fitness: List[float]):
         gb_fitness (list of float): List of global best fitness values.
     """
     path = f'{main_path}/Global_best_Fitness'
-    path_check(path) 
+    path_check(path)
 
     with open(f'{path}/gbf.txt', 'w') as gbf_file:
         epoch = 1
@@ -739,7 +760,7 @@ def read_best_rqi(
     """
     # RQI directory path
     rq_dir = Path(file_name)
-    
+
     # Create clean map in the RQI directory if it's empty or not exist
     if not rq_dir.exists() or not any(rq_dir.iterdir()):
         clean_map(
@@ -749,7 +770,7 @@ def read_best_rqi(
             prop_key=prop_key,
             dim=dim
         )
-        
+
     # Read best RQI values from file
     with open(f'{file_name}/best_RQI.text', 'r') as file:
         best_rqi = [float(i) for i in file]
@@ -766,3 +787,51 @@ def read_best_rqi(
     if mode == 'all':
         return best_rqi, best_rqi_locs, null_locs
 
+
+def copy_log_files(
+    optimizer_info: Dict,
+    source_dir_name: str = None,
+    dest_dir_name: str = None,
+    run_id: Union[int, str] = 1,
+    TH: int = 0,
+    others: Union[str, int] = None
+):
+    """
+    Copy the Log File directory to Run_History directory with a relevent name.
+    The result is somehow like: ./Run_History/dest_name/Epoch=10, PS=20, (PD, SD)=(0.9, 0.2), ST=0.75_Run=run_id
+
+    Arguments:
+        optimizer_info {dict} -- A dic contain optimizer hyper-parameters. Expected keywords:
+        ['PD', 'SD', 'ST', 'iteration', 'pop_size']
+
+    Keyword Arguments:
+        source_dir_name {str} -- The source directory name where the Log results of each run uploaded. Defauls if "Log Files". (default: {None})
+        dest_dir_name {str} -- A name for destiniction, for the purpose of classification.  (default: {None})
+        run_id {str, int} -- Number or Run ID (default: {1})
+        TH {int} -- The threshold for Quality map
+        others {str, int} -- Other description you like to add (default: {None})
+
+    Returns:
+        None 
+    """
+    # unpacking the optimizer info
+    PD = optimizer_info['PD']
+    SD = optimizer_info['SD']
+    ST = optimizer_info['ST'],
+    iteration = optimizer_info['iteration'],
+    pop_size = optimizer_info['pop_size']
+
+    # Set default values if src_dir or des_dir are not provided
+    source_dir_path = f'{source_dir_name}/' or 'Log_Files/'
+    dest_dir_path = f'./Run_History/{dest_dir_name}/' or './Run_History/'
+
+    # Full description of destiniction path directory including all essential information
+    full_name_path = f'{dest_dir_path}/Epoch={iteration}, PS={pop_size}, PD-SD={(PD, SD)}, ST={ST}, TH={TH}, Run={run_id}'
+    full_name_path_others = f'{dest_dir_path}/Epoch={iteration}, PS={pop_size}, PD-SD={(PD, SD)}, ST={ST}, TH={TH}, {others}_Run={run_id}'
+
+    if others is None:
+        dest_dir_path = full_name_path
+    else:
+        dest_dir_path = full_name_path_others
+
+    shutil.copytree(source_dir_path, dest_dir_path)
